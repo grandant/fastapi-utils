@@ -1,42 +1,57 @@
 name: publish
 
 on:
-  push
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish distribution to PyPI"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
-  publish-tag:
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+  publish:
     runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 1
-      matrix:
-        python-version: ['3.10']
+
+    environment: pypi
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
         with:
-          python-version: ${{ matrix.python-version }}
-      # Avoid caching to be 100% confident things are working properly
-      - name: Init python poetry action
-        uses: abatilo/actions-poetry@v3.0.0
-        with:
-          poetry-version: 1.5.1
+          version: "0.13.1"
+          python-version: "3.12"
+          enable-cache: false
 
       - name: Install dependencies
-        run: poetry install -E session
+        run: uv sync --locked --extra all
 
-      - name: Check that formatting, linting, and tests pass for pydantic v1
-        run: poetry run make ci-v1
-      - name: Check that formatting, linting, and tests pass for pydantic v2
-        run: poetry run make ci-v2
+      - name: Test with Pydantic v1
+        run: |
+          make install-v1
+          uv run --no-sync pytest
 
-      - name: Build distribution
-        run: poetry build
+      - name: Restore Pydantic v2
+        run: uv sync --locked --extra all --reinstall-package pydantic
 
-      - name: Publish distribution to PyPI
-        run: poetry publish
+      - name: Test with Pydantic v2
+        run: uv run --locked --extra all pytest
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Verify distributions
+        run: |
+          uvx twine check dist/*
+
+      - name: Publish to PyPI
+        if: inputs.publish == true
         env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
-
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: uv publish

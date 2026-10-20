@@ -6,122 +6,137 @@ tests_src = tests
 docs_src = docs/src
 all_src = $(pkg_src) $(tests_src)
 
-mypy_base = mypy --show-error-codes
-mypy = $(mypy_base) $(all_src)
-test = pytest --cov=$(pkg_src)
+UV := uv
+UV_RUN := $(UV) run --extra all
 
-.PHONY: all  ## Run the most common rules used during development
+mypy_base = $(UV_RUN) mypy --show-error-codes
+mypy = $(mypy_base) $(all_src)
+test = $(UV_RUN) pytest --cov=$(pkg_src)
+
+.PHONY: all
 all: static test
 
-.PHONY: static  ## Perform all static checks (format, mypy)
+.PHONY: static
 static: format lint mypy
 
-.PHONY: test  ## Run tests
+.PHONY: test ## Run tests with coverage
 test:
 	$(test)
 
-.PHONY: format  ## Auto-format the source code (ruff, black)
+.PHONY: format ## Auto-format source code
 format:
-	black $(all_src)
-	black -l 82 $(docs_src)
-	ruff check --fix $(all_src)
+	$(UV_RUN) black $(all_src)
+	$(UV_RUN) black -l 82 $(docs_src)
+	$(UV_RUN) ruff check --fix $(all_src)
 
-.PHONY: lint
+.PHONY: lint ## Run linting and formatting checks
 lint:
-	ruff check $(all_src)
-	black --check --diff $(all_src)
-	black -l 82 $(docs_src) --check --diff
+	$(UV_RUN) ruff check $(all_src)
+	$(UV_RUN) black --check --diff $(all_src)
+	$(UV_RUN) black -l 82 $(docs_src) --check --diff
 
-.PHONY: mypy  ## Run mypy over the application source and tests
+.PHONY: mypy ## Run static type checking
 mypy:
 	$(mypy)
 
-.PHONY: testcov  ## Run tests, generate a coverage report, and open in browser
+.PHONY: testcov ## Generate HTML coverage report
 testcov:
 	$(test)
-	@echo "building coverage html"
-	@coverage html
-	@echo "A coverage report was generated at htmlcov/index.html"
+	@echo "Building HTML coverage report..."
+	$(UV_RUN) coverage html
+	@echo "Coverage report: htmlcov/index.html"
 	@if [ "$$(uname -s)" = "Darwin" ]; then \
 		open htmlcov/index.html; \
 	fi
 
-.PHONY: ci-v1  ## Run all CI validation steps without making any changes to code in pydantic v1
-ci-v1: install-v1 lint test
+.PHONY: ci-v1 ## Run CI with Pydantic v1
+ci-v1: install-v1
+	$(MAKE) lint test UV_RUN="$(UV) run --no-sync"
 
+.PHONY: ci-v2 ## Run CI with Pydantic v2
+ci-v2: install-v2
+	$(MAKE) lint mypy test
 
-.PHONY: ci-v2  ## Run all CI validation steps without making any changes to code in pydantic v2
-ci-v2: install-v2 lint mypy test
-
-
+.PHONY: install-v1 ## Install Pydantic v1 test environment
 install-v1:
-	poetry run python -m pip uninstall "pydantic-settings" -y
-	poetry run python -m pip uninstall "typing-inspect" -y
-	poetry run python -m pip install "pydantic>=1.10,<2.0.0"
+	$(UV) sync --locked --extra all
+	$(UV) pip uninstall --python .venv/bin/python \
+		pydantic-settings typing-inspect
+	$(UV) pip install --python .venv/bin/python \
+		"pydantic>=1.10,<2.0"
 
+.PHONY: install-v2 ## Restore Pydantic v2 environment
 install-v2:
-	poetry run python -m pip install "pydantic>=2.0.0,<3.0.0"
-	poetry run python -m pip install "pydantic-settings>=2.0.0,<3.0.0"
-	poetry run python -m pip install "typing-inspect>=0.9.0,<1.0.0"
+	$(UV) sync --locked --extra all \
+		--reinstall-package pydantic
 
-
-.PHONY: clean  ## Remove temporary and cache files/directories
-clean:
-	rm -f `find . -type f -name '*.py[co]' `
-	rm -f `find . -type f -name '*~' `
-	rm -f `find . -type f -name '.*~' `
-	rm -f `find . -type f -name .coverage`
-	rm -f `find . -type f -name ".coverage.*"`
-	rm -rf `find . -name __pycache__`
-	rm -rf `find . -type d -name '*.egg-info' `
-	rm -rf `find . -type d -name 'pip-wheel-metadata' `
-	rm -rf `find . -type d -name .pytest_cache`
-	rm -rf `find . -type d -name .cache`
-	rm -rf `find . -type d -name .mypy_cache`
-	rm -rf `find . -type d -name .ruff_cache`
-	rm -rf `find . -type d -name htmlcov`
-	rm -rf `find . -type d -name "*.egg-info"`
-	rm -rf `find . -type d -name build`
-	rm -rf `find . -type d -name dist`
-
-.PHONY: lock  ## Update the lockfile
+.PHONY: lock ## Update uv.lock
 lock:
-	./scripts/lock.sh
+	$(UV) lock
 
-.PHONY: develop  ## Set up the development environment, or reinstall from the lockfile
+.PHONY: develop ## Set up development environment
 develop:
-	./scripts/develop.sh
+	$(UV) sync --locked --extra all
 
-.PHONY: version  ## Bump the version in both pyproject.toml and __init__.py (usage: `make version version=minor`)
-version: poetryversion
-	$(eval NEW_VERS := $(shell cat pyproject.toml | grep "^version = \"*\"" | cut -d'"' -f2))
-	@sed -i "s/__version__ = .*/__version__ = \"$(NEW_VERS)\"/g" $(pkg_src)/__init__.py
+.PHONY: build ## Build wheel and source distribution
+build:
+	$(UV) build
 
-.PHONY: docs-build  ## Generate the docs and update README.md
+.PHONY: check ## Run checks without changing source files
+check: lint mypy test build
+
+.PHONY: version ## Bump version (make version version=minor)
+version:
+	@test -n "$(version)" || \
+		(echo "Usage: make version version=patch|minor|major" && exit 1)
+	$(UV) version --bump $(version)
+	$(eval NEW_VERS := $(shell grep '^version = ' pyproject.toml | head -1 | cut -d'"' -f2))
+	@sed -i.bak \
+		's/__version__ = .*/__version__ = "$(NEW_VERS)"/g' \
+		$(pkg_src)/__init__.py
+	@rm -f $(pkg_src)/__init__.py.bak
+	@echo "Version updated to $(NEW_VERS)"
+
+.PHONY: docs-build ## Build documentation
 docs-build:
-	cp ./README.md ./docs/index.md
-	cp ./CONTRIBUTING.md ./docs/contributing.md
-	cp ./CHANGELOG.md ./docs/release-notes.md
-	pip install mkdocs mkdocs-material markdown-include
-	python -m mkdocs build
+	cp README.md docs/index.md
+	cp CONTRIBUTING.md docs/contributing.md
+	cp CHANGELOG.md docs/release-notes.md
+	$(UV_RUN) mkdocs build
 
-.PHONY: docs-format  ## Format the python code that is part of the docs
+.PHONY: docs-format ## Format documentation Python code
 docs-format:
-	ruff check $(docs_src)
-	autoflake -r --remove-all-unused-imports --ignore-init-module-imports $(docs_src) -i
-	black -l 82 $(docs_src)
+	$(UV_RUN) ruff check $(docs_src)
+	$(UV_RUN) autoflake -r \
+		--remove-all-unused-imports \
+		--ignore-init-module-imports \
+		$(docs_src) -i
+	$(UV_RUN) black -l 82 $(docs_src)
 
-.PHONY: docs-live  ## Serve the docs with live reload as you make changes
+.PHONY: docs-live ## Serve documentation with live reload
 docs-live:
-	mkdocs serve --dev-addr 0.0.0.0:8008
+	$(UV_RUN) mkdocs serve --dev-addr 0.0.0.0:8008
 
-.PHONY: poetryversion
-poetryversion:
-	poetry version $(version)
+.PHONY: clean ## Remove build and cache artifacts
+clean:
+	find . -type f \( -name '*.py[co]' -o -name '*~' \
+		-o -name '.*~' -o -name '.coverage*' \) -delete
+	find . -type d \( \
+		-name '__pycache__' -o \
+		-name '*.egg-info' -o \
+		-name 'pip-wheel-metadata' -o \
+		-name '.pytest_cache' -o \
+		-name '.cache' -o \
+		-name '.mypy_cache' -o \
+		-name '.ruff_cache' -o \
+		-name 'htmlcov' -o \
+		-name 'build' -o \
+		-name 'dist' \
+	\) -prune -exec rm -rf {} +
 
-.PHONY: help  ## Display this message
+.PHONY: help ## Display available commands
 help:
-	@grep -E \
-		'^.PHONY: .*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -E '^.PHONY: .*## .*$$' $(MAKEFILE_LIST) | \
 		sort | \
-		awk 'BEGIN {FS = ".PHONY: |## "}; {printf "\033[36m%-16s\033[0m %s\n", $$2, $$3}'
+		awk 'BEGIN {FS = ".PHONY: |## "}; \
+		{printf "\033[36m%-16s\033[0m %s\n", $$2, $$3}'

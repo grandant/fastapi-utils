@@ -3,13 +3,19 @@ from __future__ import annotations
 from typing import Any, ClassVar, Optional
 
 import pytest
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from starlette.testclient import TestClient
 
 from fastapi_utils.cbv import cbv
 
 
 class TestCBV:
+    @staticmethod
+    def create_client(router: APIRouter) -> TestClient:
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
     @pytest.fixture(autouse=True)
     def router(self) -> APIRouter:
         return APIRouter()
@@ -31,7 +37,7 @@ class TestCBV:
             def int_response(self) -> int:
                 return self.one + self.two
 
-        client = TestClient(router)
+        client = self.create_client(router)
         response_1 = client.get("/")
         assert response_1.status_code == 200
         assert response_1.json() == expected_response
@@ -58,7 +64,7 @@ class TestCBV:
             def int_dependencies(self) -> int:
                 return self.one + self.two
 
-        client = TestClient(router)
+        client = self.create_client(router)
         response = client.get("/")
         assert response.status_code == 200
         assert response.content == b"3"
@@ -72,7 +78,7 @@ class TestCBV:
             def g(self) -> bool:
                 return hasattr(self, "class_var")
 
-        client = TestClient(router)
+        client = self.create_client(router)
         response = client.get("/")
         assert response.status_code == 200
         assert response.content == b"false"
@@ -88,7 +94,7 @@ class TestCBV:
             def get_any_path(self) -> int:  # Alphabetically before `get_test`
                 return 2
 
-        client = TestClient(router)
+        client = self.create_client(router)
         assert client.get("/test").json() == 1
         assert client.get("/any_other_path").json() == 2
 
@@ -101,7 +107,7 @@ class TestCBV:
             def root(self, custom_path: Optional[str] = None) -> Any:
                 return {"custom_path": custom_path} if custom_path else []
 
-        client = TestClient(router)
+        client = self.create_client(router)
         assert client.get("/items").json() == []
         assert client.get("/items/1").json() == {"custom_path": "1"}
         assert client.get("/database/abc").json() == {"custom_path": "abc"}
@@ -113,7 +119,7 @@ class TestCBV:
             def root(self, param: Optional[int] = None) -> int:
                 return param if param else 0
 
-        client = TestClient(router)
+        client = self.create_client(router)
         assert client.get("/route").json() == 0
         assert client.get("/route?param=3").json() == 3
 
@@ -126,7 +132,7 @@ class TestCBV:
             def root(self) -> str:
                 return "hello"
 
-        client = TestClient(router)
+        client = self.create_client(router)
         response = client.get("/api/item")
         assert response.status_code == 200
         assert response.json() == "hello"
@@ -144,6 +150,6 @@ class TestCBV:
             def example(self, request: Request) -> str:
                 return str(request.url_for("Foo.example"))
 
-        client = TestClient(router)
+        client = self.create_client(router)
         response = client.get("/foo")
         assert response.json() == "http://testserver/bar"

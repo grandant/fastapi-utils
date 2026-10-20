@@ -1,50 +1,65 @@
+
 name: publish-docs
 
-permissions:
-  id-token: write
-  pages: write
-
 on:
-  workflow_run:
-    workflows:
-      - publish
-    types:
-      - completed
+  push:
+    branches:
+      - master
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".github/workflows/publish-docs.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
 
 jobs:
   publish-docs:
     runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 1
-      matrix:
-        python-version: ['3.10']
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
         with:
-          python-version: ${{ matrix.python-version }}
-      # Avoid caching to be 100% confident things are working properly
-      - name: Init python poetry action
-        uses: abatilo/actions-poetry@v3.0.0
-        with:
-          poetry-version: 1.5.1
+          version: "0.13.1"
+          python-version: "3.12"
+          enable-cache: true
 
       - name: Install dependencies
-        run: poetry install -E session
+        run: uv sync --locked --extra all
 
-      - name: Check docs are up to date
-        run: poetry run make docs-build
+      - name: Build documentation
+        run: make docs-build
 
-      # Publish docs to github pages
-      - name: Setup Pages
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Upload artifact
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: './site'
+          path: ./site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -2,134 +2,279 @@ First, you might want to see the basic ways to [help and get help](help-fastapi-
 
 ## Developing
 
-Once you've cloned the repository, here are some guidelines to set up your environment:
+Once you've cloned the repository, follow these instructions to set up your development environment.
 
-### Set up the development evironment
+### Prerequisites
 
-After cloning the repository, you can use `poetry` to create a virtual environment: 
+You'll need:
+
+- Python 3.8–3.12 (Python 3.12 is recommended for local development).
+- [uv](https://docs.astral.sh/uv/), our Python package and environment manager.
+- `make` for running development commands.
+
+Install uv by following the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
+
+### Set up the development environment
+
+After cloning the repository, run:
 
 ```console
 $ make develop
 ```
 
-Behind the scenes, this checks that you have python3 and poetry installed,
-then creates a virtual environment and installs the dependencies. At the end, it will print out
-the path to the executable in case you want to add it to your IDE.
+This uses `uv sync` to create a virtual environment in `.venv` and install the project, development dependencies, and optional integrations from `uv.lock`.
 
-
-### Activate the environment
-
-Once the virtual environment is created, you can activate it with:
+To explicitly use Python 3.12:
 
 ```console
-$ poetry shell
+$ uv sync --python 3.12 --extra all
 ```
 
-To check if this worked, try running: 
+uv can automatically download a compatible Python interpreter when needed.
+
+### Running commands in the environment
+
+You don't need to activate the virtual environment when using uv.
+
+Simply prefix commands with `uv run`:
 
 ```console
-$ which python
-
-some/directory/fastapi-utils-SOMETHING-py3.X/bin/python
+$ uv run python
+$ uv run pytest
+$ uv run mypy
 ```
 
-If the output of this command shows the `python` binary in a path containing `fastapi-utils` somewhere in the name
-(as above), then it worked! 🎉
+uv automatically uses the project's virtual environment.
+
+If you prefer activating the environment manually:
+
+```console
+$ source .venv/bin/activate
+```
+
+On Windows, the activation command depends on your shell.
+
+To verify the interpreter:
+
+```console
+$ uv run python -c "import sys; print(sys.executable)"
+```
+
+The resulting path should point to the project's `.venv` directory.
 
 !!! tip
-    Every time you install a new package with `pip` under that environment, activate the environment again.
+    Prefer `uv add` for managing dependencies rather than installing packages directly with `pip`.
 
-    This makes sure that if you use a terminal program installed by that package (like `mypy`),
-    you use the one from your local environment and not any other that could be installed globally.
+    For example, to add a development dependency:
 
-### Static Code Checks
+    ```console
+    $ uv add --dev package-name
+    ```
 
-This project makes use of `black`, `autoflake8`, and `isort` for formatting,
-`flake8` for linting, and `mypy` for static type checking.
+    This updates `pyproject.toml` and `uv.lock` together.
 
+### Static code checks
 
-To auto-format your code, just run:
+The project uses:
+
+- **Ruff** for linting and import organization.
+- **Black** for code formatting.
+- **mypy** for static type checking.
+- **autoflake** for cleaning unused imports in documentation examples.
+
+To automatically format the source code:
 
 ```console
 $ make format
 ```
 
-It will also auto-sort all your imports, and attempt to remove any unused imports.
-
-You can run flake8 with:
+To check linting and formatting without modifying files:
 
 ```console
 $ make lint
 ```
 
-and you can run mypy with:
+To run static type checking:
 
 ```console
 $ make mypy
 ```
 
-There are a number of other useful makefile recipes; you can see basic documentation of these by calling plain `make`:
+To run all static checks:
+
+```console
+$ make static
+```
+
+Note that `make static` also runs formatting and may modify source files.
+
+!!! note
+    The project currently contains some pre-existing lint and formatting issues. These are being addressed separately from the migration to uv.
+
+To see all available Makefile commands:
 
 ```console
 $ make
 ```
 
-
 ## Docs
 
-The documentation uses <a href="https://www.mkdocs.org/" class="external-link" target="_blank">MkDocs</a>.
+The documentation uses [MkDocs](https://www.mkdocs.org/) with MkDocs Material.
 
-All the documentation is in Markdown format in the directory `./docs`.
+Documentation is written in Markdown and stored in the `./docs` directory.
 
-Many of the sections in the User Guide have blocks of code.
+Many User Guide examples are actual Python source files located in `./docs/src/`. These files are included in the documentation during the build process.
 
-In fact, those blocks of code are not written inside the Markdown, they are Python files in the `./docs/src/` directory.
+### Documentation examples and tests
 
-And those Python files are included/injected in the documentation when generating the site.
+Many tests exercise the example source files used in the documentation.
 
-### Docs for tests
+This helps ensure that:
 
-Most of the tests actually run against the example source files in the documentation.
+- Documentation examples stay up to date.
+- Examples can be executed as written.
+- Documented features receive test coverage.
 
-This helps making sure that:
+### Build the documentation
 
-* The documentation is up to date.
-* The documentation examples can be run as is.
-* Most of the features are covered by the documentation, ensured by test coverage.
-
-During local development, there is a script that builds the site and checks for any changes, live-reloading:
+To generate the documentation site:
 
 ```console
-$ bash scripts/docs-live.sh
+$ make docs-build
 ```
 
-It will serve the documentation on `http://0.0.0.0:8008`.
+The generated website is available in `./site`.
 
-That way, you can edit the documentation/source files and see the changes live.
+### Live documentation preview
+
+To start the MkDocs development server:
+
+```console
+$ make docs-live
+```
+
+Open [http://localhost:8008](http://localhost:8008) in your browser.
+
+MkDocs automatically rebuilds the documentation when source files change.
+
+### Format documentation examples
+
+To format Python examples used in the documentation:
+
+```console
+$ make docs-format
+```
 
 ## Tests
 
-You can run all tests via:
+The project uses pytest.
+
+Run all tests with coverage:
 
 ```console
 $ make test
 ```
 
-You can also generate a coverage report with:
+Alternatively, execute pytest directly:
 
 ```console
-make testcov
+$ uv run pytest
 ```
 
-On MacOS, if the tests all pass, the coverage report will be opened directly in a browser; on other operating systems
-a link will be printed to the local HTML containing the coverage report.
+### Coverage reports
+
+To generate an HTML coverage report:
+
+```console
+$ make testcov
+```
+
+The report will be generated at:
+
+```text
+htmlcov/index.html
+```
+
+On macOS, the Makefile automatically opens the report in your browser.
+
+On other platforms, open the HTML file manually.
+
+### Pydantic compatibility
+
+The project supports Pydantic v1 and v2.
+
+To run the Pydantic v1 test workflow:
+
+```console
+$ make ci-v1
+```
+
+To restore the default Pydantic v2 environment and run its validation:
+
+```console
+$ make ci-v2
+```
+
+These workflows temporarily modify the development environment. Run `make develop` afterward if you need to restore the locked dependencies.
 
 ### Tests in your editor
 
-If you want to use the integrated tests in your editor add `./docs/src` to your `PYTHONPATH` variable.
+Some tests require the documentation example modules to be importable.
 
-For example, in VS Code you can create a file `.env` with:
+Configure your editor to include `./docs/src` in `PYTHONPATH`.
+
+For example, in VS Code, create an `.env` file containing:
 
 ```env
 PYTHONPATH=./docs/src
 ```
+
+Also configure your editor to use the project's Python interpreter:
+
+```text
+.venv/bin/python
+```
+
+On Windows, use `.venv\Scripts\python.exe`.
+
+## Building the package
+
+To build both the wheel and source distribution:
+
+```console
+$ make build
+```
+
+This uses `uv build` and writes the distributions to `./dist`.
+
+## Dependency management
+
+The project uses `pyproject.toml` for dependency declarations and `uv.lock` for reproducible development environments.
+
+To update the lockfile:
+
+```console
+$ make lock
+```
+
+To reinstall dependencies according to the existing lockfile:
+
+```console
+$ make develop
+```
+
+Commit changes to `pyproject.toml` and `uv.lock` together.
+
+## Version management
+
+To bump the project version:
+
+```console
+$ make version version=patch
+```
+
+Supported version increments include `patch`, `minor`, and `major`.
+
+The Makefile updates the version in `pyproject.toml` and `fastapi_utils/__init__.py`.
+
+Version changes should be handled separately from unrelated development changes.
